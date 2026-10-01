@@ -6,6 +6,7 @@ local M = {}
 ---@field branch { base: string|nil }
 ---@field export ReviewExportConfig
 ---@field codediff ReviewCodediffConfig
+---@field reviewed ReviewReviewedConfig
 
 ---@class ReviewExportConfig
 ---@field header string header block prepended to exported markdown
@@ -48,9 +49,15 @@ local M = {}
 ---@field popup_cancel string|false
 ---@field show_help string|false
 ---@field popup_cycle_type string|false
+---@field toggle_file_reviewed string|false
+---@field readonly_toggle_file_reviewed string|false
 
 ---@class ReviewCodediffConfig
 ---@field readonly boolean
+
+---@class ReviewReviewedConfig
+---@field icon string
+---@field hl string
 
 ---@type ReviewConfig
 M.defaults = {
@@ -68,6 +75,7 @@ M.defaults = {
     add_issue = "<localleader>ci",
     add_praise = "<localleader>cp",
     add_file_comment = "<localleader>cf",
+    toggle_file_reviewed = "<localleader>cr",
     delete_comment = "<localleader>cd",
     edit_comment = "<localleader>ce",
     -- Navigation
@@ -88,6 +96,7 @@ M.defaults = {
     readonly_delete = "d",
     readonly_edit = "e",
     readonly_add_file = "F",
+    readonly_toggle_file_reviewed = "r",
     -- Help
     show_help = "?",
     -- Popup keymaps
@@ -111,6 +120,10 @@ M.defaults = {
   },
   codediff = {
     readonly = true,
+  },
+  reviewed = {
+    icon = "✓",
+    hl = "ReviewReviewed",
   },
 }
 

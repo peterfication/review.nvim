@@ -86,4 +86,23 @@ T["is_enabled"]["returns false for disabled keys"] = function()
   eq(t.is_enabled(""), false)
 end
 
+T["reviewed keymaps"] = function()
+  local config = require("review.config")
+  config.setup()
+  eq(config.get().keymaps.readonly_toggle_file_reviewed, "r")
+  eq(config.get().keymaps.toggle_file_reviewed, "<localleader>cr")
+
+  config.setup({
+    keymaps = {
+      readonly_toggle_file_reviewed = "v",
+      toggle_file_reviewed = false,
+    },
+    reviewed = { icon = "OK", hl = "Special" },
+  })
+  eq(config.get().keymaps.readonly_toggle_file_reviewed, "v")
+  eq(config.get().keymaps.toggle_file_reviewed, false)
+  eq(config.get().reviewed, { icon = "OK", hl = "Special" })
+  config.setup()
+end
+
 return T

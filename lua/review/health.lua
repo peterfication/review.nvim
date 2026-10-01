@@ -57,6 +57,13 @@ local function check_codediff()
   else
     ok("codediff.ui.explorer navigation API")
   end
+
+  local formatter_missing = missing_functions("codediff.ui.explorer.formatters", { "file" })
+  if #formatter_missing > 0 then
+    err("codediff explorer default file formatter is unavailable", { "Reviewed-file indicators need CodeDiff's public formatter API. Update codediff.nvim" })
+  else
+    ok("codediff explorer formatter API")
+  end
 end
 
 function M.check()
