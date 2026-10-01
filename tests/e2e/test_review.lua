@@ -239,6 +239,20 @@ T["marks files reviewed without moving focus"] = function()
   eq(child.lua_get(E.EXPLORER_TEXT):find("✓", 1, true), nil)
 end
 
+T["marks files reviewed from the explorer"] = function()
+  open_review()
+  local explorer_win = child.lua_get([[(function()
+    return require("review.hooks").get_explorer(vim.api.nvim_get_current_tabpage()).winid
+  end)()]])
+  child.api.nvim_set_current_win(explorer_win)
+
+  eq(child.lua_get([[vim.fn.maparg("r", "n", false, true).desc]]), "Toggle file reviewed")
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed from explorer")
+  eq(child.api.nvim_get_current_win(), explorer_win)
+  expect_match(child.lua_get(E.EXPLORER_TEXT), "✓")
+end
+
 T["persists marks across restart and export"] = function()
   open_review()
   child.type_keys("r")

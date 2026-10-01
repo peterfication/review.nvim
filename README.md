@@ -139,7 +139,7 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `i` | Add comment (pick type from menu) |
 | `d` | Delete comment at cursor |
 | `e` | Edit comment at cursor |
-| `r` | Toggle current file reviewed |
+| `r` | Toggle current file reviewed (diff panes or explorer) |
 | `c` | List all comments |
 | `f` | Toggle file panel visibility |
 | `R` | Toggle readonly/edit mode |
@@ -161,7 +161,7 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `<localleader>cn/cs/ci/cp` | Add Note/Suggestion/Issue/Praise |
 | `<localleader>cd` | Delete comment |
 | `<localleader>ce` | Edit comment |
-| `<localleader>cr` | Toggle current file reviewed |
+| `<localleader>cr` | Toggle current file reviewed (diff panes or explorer) |
 
 **Comment popup** (when adding/editing):
 | Key | Action |

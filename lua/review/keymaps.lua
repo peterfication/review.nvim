@@ -288,6 +288,30 @@ local function set_buffer_keymaps(bufnr)
   keymapped_buffers[bufnr] = mapped
 end
 
+---Set only the reviewed-file toggle on CodeDiff's explorer buffer.
+---@param bufnr number
+local function set_explorer_keymap(bufnr)
+  clear_buffer_keymaps(bufnr)
+
+  local cfg = config.get()
+  local lhs = cfg.keymaps.toggle_file_reviewed
+  if cfg.codediff.readonly then
+    lhs = cfg.keymaps.readonly_toggle_file_reviewed
+  end
+  local mapped = {}
+  if is_enabled(lhs) then
+    vim.keymap.set("n", lhs, function() require("review").toggle_current_reviewed() end, {
+      buffer = bufnr,
+      noremap = true,
+      silent = true,
+      nowait = true,
+      desc = "Toggle file reviewed",
+    })
+    table.insert(mapped, { "n", lhs })
+  end
+  keymapped_buffers[bufnr] = mapped
+end
+
 -- Autocmd group for keymaps
 local augroup = nil
 
@@ -320,7 +344,13 @@ function M.setup_keymaps(tabpage)
     end
   end
 
-  -- Set up autocmd to apply keymaps only on codediff diff buffers
+  local explorer = hooks.get_explorer(tabpage)
+  if explorer and explorer.bufnr and vim.api.nvim_buf_is_valid(explorer.bufnr) then
+    set_explorer_keymap(explorer.bufnr)
+  end
+
+  -- Reapply the appropriate maps when entering a review buffer. Explorer
+  -- buffers receive only the reviewed-file toggle, preserving CodeDiff's maps.
   vim.api.nvim_create_autocmd("BufEnter", {
     group = augroup,
     callback = function()
@@ -329,8 +359,12 @@ function M.setup_keymaps(tabpage)
       local win_config = vim.api.nvim_win_get_config(0)
       if win_config.relative ~= "" then return end
       if not lifecycle.get_session(tabpage) then return end
-      -- Only apply review keymaps to codediff diff buffers, not the explorer
       local bufnr = vim.api.nvim_get_current_buf()
+      local explorer_obj = hooks.get_explorer(tabpage)
+      if explorer_obj and bufnr == explorer_obj.bufnr then
+        set_explorer_keymap(bufnr)
+        return
+      end
       local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
       if bufnr ~= orig_buf and bufnr ~= mod_buf then return end
       set_buffer_keymaps(bufnr)
