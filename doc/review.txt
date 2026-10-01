@@ -21,12 +21,13 @@ CONTENTS                                                     *review-contents*
 review.nvim adds code review annotations on top of |codediff.nvim|. You can
 leave comments (notes, suggestions, issues, praise) on specific lines in a
 diff view, then export them to clipboard or send them to sidekick.nvim for AI
-chat.
+chat. Files can also be checked off as reviewed in the CodeDiff explorer.
 
 Features:
 - Line and range comments with box-style virtual text
 - Four comment types: Note, Suggestion, Issue, Praise
-- Comments persist per branch across sessions
+- Comments and reviewed-file marks persist per repository across sessions
+- Reviewed marks are invalidated when either side of the diff changes
 - Export format optimized for AI conversations
 - Commit picker to review specific revision ranges
 - Readonly and edit modes with separate keymap sets
@@ -34,7 +35,7 @@ Features:
 ==============================================================================
 2. REQUIREMENTS                                          *review-requirements*
 
-- Neovim >= 0.9
+- Neovim >= 0.10
 - codediff.nvim (https://github.com/esmuellert/codediff.nvim)
 - nui.nvim (https://github.com/MunifTanjim/nui.nvim)
 
@@ -75,7 +76,13 @@ All commands use the `:Review` prefix.
 :Review list                List all comments with a picker to jump to any.
 
                                                                *:Review-clear*
-:Review clear               Clear all comments.
+:Review clear               Archive and clear comments and reviewed marks.
+
+                                                               *:Review-check*
+:Review check               Mark the selected diff entry reviewed.
+
+                                                             *:Review-uncheck*
+:Review uncheck             Mark the selected diff entry unreviewed.
 
                                                               *:Review-toggle*
 :Review toggle              Toggle between readonly and edit mode.
@@ -122,6 +129,11 @@ All fields are optional; defaults are shown.
         readonly = true,
       },
 
+      reviewed = {
+        icon = "✓",
+        hl = "ReviewReviewed",
+      },
+
       keymaps = { ... },  -- see |review-keymaps|
     })
 <
@@ -147,6 +159,7 @@ These keymaps are active when `codediff.readonly = true`:
     `e`       Edit comment at cursor                  |n|
     `d`       Delete comment at cursor                |n|
     `F`       Add file-level comment                  |n|
+    `r`       Toggle selected file reviewed           |n|
 
 EDIT MODE                                               *review-keymaps-edit*
 
@@ -161,6 +174,7 @@ These keymaps are active when `codediff.readonly = false`:
     `<localleader>cf`    Add file-level comment              |n|
     `<localleader>ce`    Edit comment at cursor              |n|
     `<localleader>cd`    Delete comment at cursor            |n|
+    `<localleader>cr`    Toggle selected file reviewed       |n|
 
 NAVIGATION                                               *review-keymaps-nav*
 
@@ -211,6 +225,7 @@ calling setup() or in a |ColorScheme| autocommand.
   `ReviewPickerHash`        Identifier        Commit hash in picker
   `ReviewPickerMeta`        Comment           Author/date in picker
   `ReviewPickerSelected`    String            Selected commit marker
+  `ReviewReviewed`          DiagnosticOk      Reviewed explorer indicator
 
   Group                   Default bg        Usage ~
   `ReviewNoteLine`          #0d1f28           Note line background
@@ -228,10 +243,17 @@ surrounding code context. Use `:Review export` to preview.
 ==============================================================================
 8. STORAGE                                                   *review-storage*
 
-Comments are stored as JSON files in: >
-    ~/.local/share/nvim/review/{project-hash}-{branch}.json
+Comments and reviewed-file marks are stored together as versioned JSON in: >
+    ~/.local/share/nvim/review/{project-hash}.json
 <
-Sessions auto-expire after 7 days and are cleaned up on load.
+The store is per repository and survives restarts. Old comment-only files are
+migrated automatically. `:Review export` leaves the checklist intact;
+`:Review clear` archives and clears both comments and reviewed marks. Archives
+expire after 30 days.
+
+Reviewed state is local metadata. It does not stage files and does not sync
+GitHub's Viewed state. The exact old and new buffer contents are fingerprinted;
+if either side changes, the mark is removed on refresh or selection.
 
 ==============================================================================
  vim:tw=78:ts=8:ft=help:norl:

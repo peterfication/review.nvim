@@ -118,7 +118,6 @@ local function current_file()
 end
 
 
-
 local function open_review()
   child.cmd("Review")
   wait_ready("api.lua")
@@ -126,6 +125,10 @@ end
 
 local function count()
   return child.lua_get([[require("review.store").count()]])
+end
+
+local function reviewed_count()
+  return child.lua_get([[require("review.store").count_reviewed()]])
 end
 
 local function comment_summary()
@@ -214,6 +217,89 @@ T["switches files with Tab and deletes with confirmation"] = function()
   expect.reference_screenshot(screenshot(), nil, SCREENSHOT_OPTS)
 end
 
+T["marks files reviewed without moving focus"] = function()
+  open_review()
+  local win = child.api.nvim_get_current_win()
+
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed")
+  eq(child.api.nvim_get_current_win(), win)
+  local explorer = child.lua_get(E.EXPLORER_TEXT)
+  expect_match(explorer, "✓")
+  expect_match(explorer, "api%.lua")
+  expect.reference_screenshot(screenshot(), nil, SCREENSHOT_OPTS)
+
+  child.type_keys("<Tab>")
+  wait_ready("utils.lua")
+  expect_match(child.lua_get(E.EXPLORER_TEXT), "✓")
+  child.type_keys("<S-Tab>")
+  wait_ready("api.lua")
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 0]], "file marked unreviewed")
+  eq(child.lua_get(E.EXPLORER_TEXT):find("✓", 1, true), nil)
+end
+
+T["persists marks across restart and export"] = function()
+  open_review()
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed")
+  child.cmd("Review export")
+  eq(reviewed_count(), 1)
+
+  E.restart(repo)
+  open_review()
+  eq(reviewed_count(), 1)
+  wait_for([[require("review.reviewed").is_reviewed("api.lua", "unstaged")]], "persisted reviewed state")
+  expect_match(child.lua_get(E.EXPLORER_TEXT), "✓")
+
+  child.cmd("Review clear")
+  wait_for([[require("review.store").count_reviewed() == 0]], "review data cleared")
+  eq(child.lua_get(E.EXPLORER_TEXT):find("✓", 1, true), nil)
+end
+
+T["invalidates a mark when the selected diff changes"] = function()
+  open_review()
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed")
+  child.lua(string.format(
+    [[
+    local path = %q
+    local lines = vim.fn.readfile(path)
+    lines[#lines + 1] = "-- changed after review"
+    vim.fn.writefile(lines, path)
+    require("codediff.ui.refresh").reopen(vim.api.nvim_get_current_tabpage())
+  ]],
+    repo .. "/api.lua"
+  ))
+  wait_for([[require("review.store").count_reviewed() == 0]], "stale reviewed mark invalidated", 20000)
+  eq(child.lua_get(E.EXPLORER_TEXT):find("✓", 1, true), nil)
+end
+
+T["treats staged and unstaged copies as separate entries"] = function()
+  E.git(repo, "add", "api.lua")
+  vim.fn.writefile(vim.list_extend(vim.fn.readfile(repo .. "/api.lua"), { "-- unstaged too" }), repo .. "/api.lua")
+  E.restart(repo)
+  open_review()
+
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "unstaged entry marked")
+  eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "unstaged")]]), true)
+  eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "staged")]]), false)
+
+  child.type_keys("<Tab>")
+  wait_ready("utils.lua")
+  child.type_keys("<Tab>")
+  wait_ready("api.lua")
+  wait_for([[(require("review.hooks").get_explorer(vim.api.nvim_get_current_tabpage()).data.current_selection or {}).group == "staged"]], "staged api selected")
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 2]], "staged entry marked independently")
+
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "staged entry unmarked")
+  eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "unstaged")]]), true)
+  eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "staged")]]), false)
+end
+
 T["checkhealth passes with codediff and nui installed"] = function()
   child.cmd("checkhealth review")
   -- rendering is async on newer Neovim
@@ -223,6 +309,7 @@ T["checkhealth passes with codediff and nui installed"] = function()
   expect_match(report, "OK codediff.ui.lifecycle API")
   expect_match(report, "OK codediff explorer accessor")
   expect_match(report, "OK codediff.ui.explorer navigation API")
+  expect_match(report, "OK codediff explorer formatter API")
   expect_match(report, "OK nui.nvim")
   expect_match(report, "OK git repository")
   eq(report:find("ERROR", 1, true), nil)
@@ -259,12 +346,16 @@ T["exports to clipboard and closes"] = function()
 
   eq(child.lua_get([[require("review.store").count()]]), 2) -- C exports, never clears
 
+  child.type_keys("r")
+  wait_for([[require("review.store").count_reviewed() == 1]], "checklist state stored before close")
+
   child.type_keys("q") -- close the review: export again, then archive and clear
   wait_for([[vim.fn.tabpagenr("$") == 1]], "review tab closed")
   expect_match(child.fn.getreg("+"), "%*%*%[ISSUE%]%*%* `api%.lua:5`")
   eq(child.lua_get([[#_G.EXPORTS]]), 2)
   eq(child.lua_get([[require("review.hooks").get_current_tabpage()]]), vim.NIL)
   eq(child.lua_get([[require("review.store").count()]]), 0)
+  eq(child.lua_get([[require("review.store").count_reviewed()]]), 0)
   -- this repo's live file is gone and exactly one archive of it exists
   -- (other cases in this file have their own repos, hence their own files)
   local live = child.lua_get([[require("review.storage").get_storage_path()]])
@@ -272,6 +363,7 @@ T["exports to clipboard and closes"] = function()
   local archived = vim.fn.glob(sandbox .. "/data/nvim/review/archive/" .. vim.fn.fnamemodify(live, ":t:r") .. "-*.json", false, true)
   eq(#archived, 1)
   expect_match(table.concat(vim.fn.readfile(archived[1]), "\n"), "pcall around decode", true)
+  expect_match(table.concat(vim.fn.readfile(archived[1]), "\n"), "reviewed_files", true)
 end
 
 return T

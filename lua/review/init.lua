@@ -8,6 +8,7 @@ local storage = require("review.storage")
 local store = require("review.store")
 local export = require("review.export")
 local comments = require("review.comments")
+local reviewed = require("review.reviewed")
 
 local initialized = false
 local augroup = nil
@@ -20,6 +21,7 @@ function M.setup(opts)
 
   config.setup(opts)
   highlights.setup()
+  reviewed.install_formatter()
 
   -- Set up autocmd to detect CodeDiff sessions
   augroup = vim.api.nvim_create_augroup("review", { clear = true })
@@ -36,6 +38,14 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("TabClosed", {
     group = augroup,
     callback = function()
+      local tabpage = hooks.get_current_tabpage()
+      if tabpage and vim.api.nvim_tabpage_is_valid(tabpage) then
+        local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+        if ok and lifecycle.get_session(tabpage) then
+          return
+        end
+      end
+      reviewed.deactivate(tabpage)
       hooks.on_session_closed()
     end,
   })
@@ -44,9 +54,13 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("User", {
     group = augroup,
     pattern = "CodeDiffOpen",
-    callback = function()
+    callback = function(ev)
+      local tabpage = ev.data and ev.data.tabpage
+      if tabpage then
+        reviewed.claim_open(tabpage)
+      end
       vim.defer_fn(function()
-        M._check_codediff_session()
+        M._check_codediff_session(tabpage)
       end, 100)
     end,
   })
@@ -55,9 +69,10 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("User", {
     group = augroup,
     pattern = "CodeDiffFileSelect",
-    callback = function()
+    callback = function(ev)
+      local tabpage = ev.data and ev.data.tabpage
       vim.defer_fn(function()
-        M._on_file_select()
+        M._on_file_select(tabpage)
       end, 100)
     end,
   })
@@ -95,13 +110,16 @@ function M.setup(opts)
 end
 
 -- Handle file selection: refresh hooks/keymaps without stealing focus
-function M._on_file_select()
+function M._on_file_select(tabpage)
   local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
   if not ok then
     return
   end
 
-  local tabpage = vim.api.nvim_get_current_tabpage()
+  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+  if not reviewed.is_active(tabpage) then
+    return
+  end
   local sess = lifecycle.get_session(tabpage)
   if not sess then
     return
@@ -109,26 +127,35 @@ function M._on_file_select()
 
   hooks.on_file_changed(tabpage)
   keymaps.setup_keymaps(tabpage)
+  reviewed.redraw(tabpage)
+  reviewed.validate_current(tabpage)
 end
 
 -- Check if current tab is a CodeDiff session and set up hooks/keymaps
-function M._check_codediff_session()
+function M._check_codediff_session(tabpage)
   local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
   if not ok then
     return
   end
 
-  local tabpage = vim.api.nvim_get_current_tabpage()
+  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+  if not reviewed.is_active(tabpage) then
+    return
+  end
   local sess = lifecycle.get_session(tabpage)
   if not sess then
     return
   end
+
+  reviewed.install_formatter()
 
   -- Set up hooks
   hooks.on_session_created(tabpage)
 
   -- Set up keymaps (uses codediff's set_tab_keymap internally)
   keymaps.setup_keymaps(tabpage)
+  reviewed.redraw(tabpage)
+  reviewed.validate_current(tabpage)
 end
 
 ---Comments made on another branch are still in the per-repo store; say so
@@ -160,11 +187,17 @@ local function open_codediff(opts)
   store.load()
   notify_other_branch_comments()
 
-  vim.cmd({ cmd = "CodeDiff", args = opts.args })
+  reviewed.begin_open()
+  local opened, open_err = pcall(vim.cmd, { cmd = "CodeDiff", args = opts.args })
+  if not opened then
+    reviewed.cancel_open()
+    vim.notify("Unable to open codediff: " .. tostring(open_err), vim.log.levels.ERROR, { title = "review.nvim" })
+    return
+  end
 
   -- Wait for CodeDiff to initialize, then set up our hooks
   local attempts = 0
-  local max_attempts = 5
+  local max_attempts = 100
   local function try_setup()
     attempts = attempts + 1
     local lifecycle_ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
@@ -178,6 +211,8 @@ local function open_codediff(opts)
     end
     if attempts < max_attempts then
       vim.defer_fn(try_setup, 100)
+    else
+      reviewed.cancel_open()
     end
   end
   vim.defer_fn(try_setup, 200)
@@ -295,6 +330,8 @@ function M.close()
   local markdown, count = export.deliver()
   local message = markdown and export.delivered_message(count) or nil
 
+  local tabpage = hooks.get_current_tabpage()
+  reviewed.deactivate(tabpage)
   vim.cmd("tabclose")
   hooks.on_session_closed()
 
@@ -319,7 +356,24 @@ end
 function M.clear()
   local archived = store.archive_and_clear()
   require("review.marks").clear_all()
-  vim.notify(archived and "All comments archived and cleared" or "No comments to clear", vim.log.levels.INFO, { title = "review.nvim" })
+  local tabpage = hooks.get_current_tabpage()
+  local explorer = tabpage and hooks.get_explorer(tabpage)
+  if explorer and explorer.tree and not explorer.is_hidden then
+    explorer.tree:render()
+  end
+  vim.notify(archived and "All review data archived and cleared" or "No review data to clear", vim.log.levels.INFO, { title = "review.nvim" })
+end
+
+function M.check_current()
+  reviewed.check_current()
+end
+
+function M.uncheck_current()
+  reviewed.uncheck_current()
+end
+
+function M.toggle_current_reviewed()
+  reviewed.toggle_current()
 end
 
 function M.count()
