@@ -99,6 +99,7 @@ local function show_help()
     entry("readonly_edit", "Edit comment", comment_entries)
     entry("readonly_delete", "Delete comment", comment_entries)
     entry("readonly_add_file", "File-level comment", comment_entries)
+    entry("readonly_toggle_file_reviewed", "Toggle file reviewed and go to next file", action_entries)
   else
     entry("add_comment", "Add comment (pick type)", comment_entries)
     entry("add_note", "Add note", comment_entries)
@@ -108,6 +109,7 @@ local function show_help()
     entry("add_file_comment", "File comment", comment_entries)
     entry("edit_comment", "Edit comment", comment_entries)
     entry("delete_comment", "Delete comment", comment_entries)
+    entry("toggle_file_reviewed", "Toggle file reviewed and go to next file", action_entries)
   end
 
   entry("next_comment", "Next comment", nav_entries)
@@ -182,6 +184,42 @@ local function show_help()
   help_popup:map("n", "<Esc>", close_help, map_opts)
 end
 
+-- Helper to jump to first hunk in current file
+local function jump_to_first_hunk()
+  local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+  if not ok then return end
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local session = lifecycle.get_session(tabpage)
+  if not session or not session.stored_diff_result then return end
+  local diff_result = session.stored_diff_result
+  if #diff_result.changes == 0 then return end
+
+  local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
+  local current_buf = vim.api.nvim_get_current_buf()
+  if current_buf ~= orig_buf and current_buf ~= mod_buf then return end
+  local is_original = current_buf == orig_buf
+
+  local first_hunk = diff_result.changes[1]
+  local target_line = is_original and first_hunk.original.start_line or first_hunk.modified.start_line
+  pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
+end
+
+-- File navigation helper
+local function navigate(direction)
+  return function()
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local explorer_obj = hooks.get_explorer(tabpage)
+    if explorer_obj then
+      require("codediff.ui.explorer")["navigate_" .. direction](explorer_obj)
+      vim.defer_fn(jump_to_first_hunk, 100)
+    end
+  end
+end
+
+local function toggle_file_reviewed()
+  require("review").toggle_current_reviewed(navigate("next"))
+end
+
 ---@param bufnr number
 local function set_buffer_keymaps(bufnr)
   -- Clear existing keymaps first
@@ -206,37 +244,6 @@ local function set_buffer_keymaps(bufnr)
     end
   end
 
-  -- Helper to jump to first hunk in current file
-  local function jump_to_first_hunk()
-    local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
-    if not ok then return end
-    local tabpage = vim.api.nvim_get_current_tabpage()
-    local session = lifecycle.get_session(tabpage)
-    if not session or not session.stored_diff_result then return end
-    local diff_result = session.stored_diff_result
-    if #diff_result.changes == 0 then return end
-
-    local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
-    local current_buf = vim.api.nvim_get_current_buf()
-    local is_original = current_buf == orig_buf
-
-    local first_hunk = diff_result.changes[1]
-    local target_line = is_original and first_hunk.original.start_line or first_hunk.modified.start_line
-    pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
-  end
-
-  -- File navigation helper
-  local function navigate(direction)
-    return function()
-      local tabpage = vim.api.nvim_get_current_tabpage()
-      local explorer_obj = hooks.get_explorer(tabpage)
-      if explorer_obj then
-        require("codediff.ui.explorer")["navigate_" .. direction](explorer_obj)
-        vim.defer_fn(jump_to_first_hunk, 100)
-      end
-    end
-  end
-
   if readonly then
     -- READONLY MODE: Full review keymaps
     set(km.readonly_add, function() comments.add_with_menu() end, "Add comment (pick type)")
@@ -244,6 +251,7 @@ local function set_buffer_keymaps(bufnr)
     set(km.readonly_add_file, function() comments.file_comment() end, "File comment")
     set(km.readonly_delete, function() comments.delete_at_cursor() end, "Delete comment")
     set(km.readonly_edit, function() comments.edit_at_cursor() end, "Edit comment")
+    set(km.readonly_toggle_file_reviewed, toggle_file_reviewed, "Toggle file reviewed and go to next file")
     set(km.list_comments, function() comments.list() end, "List all comments")
     set(km.export_clipboard, function() export.to_clipboard() end, "Export to clipboard")
     set(km.send_sidekick, function() export.to_sidekick() end, "Send to sidekick")
@@ -265,6 +273,7 @@ local function set_buffer_keymaps(bufnr)
     set(km.add_file_comment, function() comments.file_comment() end, "File comment")
     set(km.delete_comment, function() comments.delete_at_cursor() end, "Delete comment")
     set(km.edit_comment, function() comments.edit_at_cursor() end, "Edit comment")
+    set(km.toggle_file_reviewed, toggle_file_reviewed, "Toggle file reviewed and go to next file")
   end
 
   -- Navigation and close - available in both modes (or edit mode only for nav)
@@ -281,6 +290,30 @@ local function set_buffer_keymaps(bufnr)
   set(km.toggle_readonly, function() require("review").toggle_readonly() end, "Toggle readonly mode")
   set(km.show_help, show_help, "Show help")
 
+  keymapped_buffers[bufnr] = mapped
+end
+
+---Set only the reviewed-file toggle on CodeDiff's explorer buffer.
+---@param bufnr number
+local function set_explorer_keymap(bufnr)
+  clear_buffer_keymaps(bufnr)
+
+  local cfg = config.get()
+  local lhs = cfg.keymaps.toggle_file_reviewed
+  if cfg.codediff.readonly then
+    lhs = cfg.keymaps.readonly_toggle_file_reviewed
+  end
+  local mapped = {}
+  if is_enabled(lhs) then
+    vim.keymap.set("n", lhs, toggle_file_reviewed, {
+      buffer = bufnr,
+      noremap = true,
+      silent = true,
+      nowait = true,
+      desc = "Toggle file reviewed and go to next file",
+    })
+    table.insert(mapped, { "n", lhs })
+  end
   keymapped_buffers[bufnr] = mapped
 end
 
@@ -316,7 +349,13 @@ function M.setup_keymaps(tabpage)
     end
   end
 
-  -- Set up autocmd to apply keymaps only on codediff diff buffers
+  local explorer = hooks.get_explorer(tabpage)
+  if explorer and explorer.bufnr and vim.api.nvim_buf_is_valid(explorer.bufnr) then
+    set_explorer_keymap(explorer.bufnr)
+  end
+
+  -- Reapply the appropriate maps when entering a review buffer. Explorer
+  -- buffers receive only the reviewed-file toggle, preserving CodeDiff's maps.
   vim.api.nvim_create_autocmd("BufEnter", {
     group = augroup,
     callback = function()
@@ -325,8 +364,12 @@ function M.setup_keymaps(tabpage)
       local win_config = vim.api.nvim_win_get_config(0)
       if win_config.relative ~= "" then return end
       if not lifecycle.get_session(tabpage) then return end
-      -- Only apply review keymaps to codediff diff buffers, not the explorer
       local bufnr = vim.api.nvim_get_current_buf()
+      local explorer_obj = hooks.get_explorer(tabpage)
+      if explorer_obj and bufnr == explorer_obj.bufnr then
+        set_explorer_keymap(bufnr)
+        return
+      end
       local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
       if bufnr ~= orig_buf and bufnr ~= mod_buf then return end
       set_buffer_keymaps(bufnr)

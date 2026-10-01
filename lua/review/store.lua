@@ -16,6 +16,16 @@ local storage = require("review.storage")
 ---@type table<string, Comment[]>
 M.comments = {}
 
+---@class ReviewedFile
+---@field file string
+---@field group string
+---@field original_hash string
+---@field modified_hash string
+---@field reviewed_at number
+
+---@type table<string, ReviewedFile>
+M.reviewed_files = {}
+
 local id_counter = 0
 local loaded = false
 
@@ -26,11 +36,16 @@ local function generate_id()
 end
 
 local function persist()
-  storage.save(M.comments)
+  storage.save({
+    version = 2,
+    comments = M.comments,
+    reviewed_files = M.reviewed_files,
+  })
 end
 
 function M.reset()
   M.comments = {}
+  M.reviewed_files = {}
   id_counter = 0
   loaded = false
 end
@@ -39,7 +54,9 @@ function M.load()
   if loaded then
     return
   end
-  M.comments = storage.load()
+  local data = storage.load()
+  M.comments = data.comments
+  M.reviewed_files = data.reviewed_files
   -- Update id_counter to avoid collisions
   for _, comments in pairs(M.comments) do
     for _, comment in ipairs(comments) do
@@ -50,6 +67,92 @@ function M.load()
     end
   end
   loaded = true
+end
+
+---@param file string
+---@param group string
+---@return string
+local function reviewed_key(file, group)
+  return group .. "\0" .. require("review.utils").normalize_path(file)
+end
+
+---@param file string
+---@param group string
+---@param original_hash string
+---@param modified_hash string
+---@param reviewed_at? number
+---@return ReviewedFile
+function M.mark_reviewed(file, group, original_hash, modified_hash, reviewed_at)
+  file = require("review.utils").normalize_path(file)
+  local entry = {
+    file = file,
+    group = group,
+    original_hash = original_hash,
+    modified_hash = modified_hash,
+    reviewed_at = reviewed_at or os.time(),
+  }
+  M.reviewed_files[reviewed_key(file, group)] = entry
+  persist()
+  return entry
+end
+
+---@param file string
+---@param group string
+---@return boolean removed
+function M.unmark_reviewed(file, group)
+  local key = reviewed_key(file, group)
+  if not M.reviewed_files[key] then
+    return false
+  end
+  M.reviewed_files[key] = nil
+  persist()
+  return true
+end
+
+---@param file string
+---@param group string
+---@return ReviewedFile|nil
+function M.get_reviewed(file, group)
+  return M.reviewed_files[reviewed_key(file, group)]
+end
+
+---@param file string
+---@param group string
+---@param original_hash? string
+---@param modified_hash? string
+---@return boolean
+function M.is_reviewed(file, group, original_hash, modified_hash)
+  local entry = M.get_reviewed(file, group)
+  if not entry then
+    return false
+  end
+  if original_hash ~= nil and entry.original_hash ~= original_hash then
+    return false
+  end
+  if modified_hash ~= nil and entry.modified_hash ~= modified_hash then
+    return false
+  end
+  return true
+end
+
+---@return ReviewedFile[]
+function M.list_reviewed()
+  local entries = {}
+  for _, entry in pairs(M.reviewed_files) do
+    entries[#entries + 1] = vim.deepcopy(entry)
+  end
+  table.sort(entries, function(a, b)
+    if a.group ~= b.group then
+      return a.group < b.group
+    end
+    return a.file < b.file
+  end)
+  return entries
+end
+
+---@return number
+function M.count_reviewed()
+  return vim.tbl_count(M.reviewed_files)
 end
 
 ---@param file string

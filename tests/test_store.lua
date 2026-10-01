@@ -217,4 +217,40 @@ T["archive_and_clear"]["empties the store and archives what was there"] = functi
   vim.fn.delete(storage.archive_dir(), "rf")
 end
 
+T["reviewed files"] = MiniTest.new_set()
+
+T["reviewed files"]["marks, queries, lists, and unmarks idempotently"] = function()
+  store.mark_reviewed("./file.lua", "unstaged", "old", "new", 42)
+  eq(store.is_reviewed("file.lua", "unstaged"), true)
+  eq(store.is_reviewed("file.lua", "unstaged", "old", "new"), true)
+  eq(store.is_reviewed("file.lua", "unstaged", "changed", "new"), false)
+  eq(store.count_reviewed(), 1)
+  eq(store.list_reviewed()[1].reviewed_at, 42)
+  eq(store.unmark_reviewed("file.lua", "unstaged"), true)
+  eq(store.unmark_reviewed("file.lua", "unstaged"), false)
+  eq(store.count_reviewed(), 0)
+end
+
+T["reviewed files"]["keeps staged and unstaged entries independent"] = function()
+  store.mark_reviewed("same.lua", "unstaged", "a", "b")
+  store.mark_reviewed("same.lua", "staged", "c", "d")
+  eq(store.count_reviewed(), 2)
+  store.unmark_reviewed("same.lua", "unstaged")
+  eq(store.is_reviewed("same.lua", "unstaged"), false)
+  eq(store.is_reviewed("same.lua", "staged"), true)
+end
+
+T["reviewed files"]["reset and archive clear comments and checks together"] = function()
+  local storage = require("review.storage")
+  store.add("file.lua", 1, "note", "comment")
+  store.mark_reviewed("file.lua", "unstaged", "old", "new")
+  local archived = store.archive_and_clear()
+  neq(archived, nil)
+  eq(store.count(), 0)
+  eq(store.count_reviewed(), 0)
+  local contents = table.concat(vim.fn.readfile(archived), "\n")
+  eq(contents:find("reviewed_files", 1, true) ~= nil, true)
+  vim.fn.delete(storage.archive_dir(), "rf")
+end
+
 return T

@@ -20,6 +20,7 @@ Inspired by [tuicr](https://github.com/agavra/tuicr).
 - Commit picker modal to select specific commits to review
 - Branch picker to review a branch against its base (merge-base aware, no checkout needed)
 - Notes on any file while you browse, exported alongside review comments
+- Persistent per-file review checklist with CodeDiff explorer check marks
 - Built on top of codediff.nvim
 
 ## Requirements
@@ -76,12 +77,14 @@ A few notes on that snippet:
 :Review note         " Comment on the current line of any file (:'<,'>Review note for a range)
 :Review edit         " Edit the comment at the cursor
 :Review delete       " Delete the comment at the cursor
-:Review close        " Close: export to clipboard, then archive and clear comments
+:Review check        " Mark the selected diff entry reviewed
+:Review uncheck      " Mark the selected diff entry unreviewed
+:Review close        " Close: export, then archive and clear review data
 :Review export       " Export comments to clipboard
 :Review preview      " Preview exported markdown in split
 :Review sidekick     " Send comments to sidekick.nvim
 :Review list         " List all comments
-:Review clear        " Archive and clear all comments
+:Review clear        " Archive and clear comments and reviewed marks
 :Review toggle       " Toggle readonly/edit mode
 ```
 
@@ -94,6 +97,8 @@ A few notes on that snippet:
 For a multi-line comment, select the range visually and press `i`. For a comment about the whole file, press `F`. Comments on the left side only show on the left, and the same goes for the right.
 
 `]n` and `[n` jump between comments, `e` edits one, `d` deletes. `c` lists every comment across files so you can jump to one.
+
+Press `r` to toggle the selected file reviewed and advance to the next file. A `✓` appears in the CodeDiff explorer. The staged and unstaged versions of the same path are separate checklist entries. Marks are local review metadata only: they do not stage files and do not synchronize GitHub's Viewed state. A mark fingerprints both sides of the comparison and is removed when either side changes.
 
 `C` copies the comments to the clipboard as markdown and shows a preview. `q` does the export one more time, archives the comments and closes, so the next review starts empty. Paste the markdown into Claude Code, sidekick.nvim (`S`), or whatever you're talking to. It looks like this:
 
@@ -116,11 +121,11 @@ Notes follow your edits. They're attached to extmarks while the buffer is open, 
 
 Files are resolved against the git repo of Neovim's working directory. A note on a file from some other repo gets refused.
 
-## How comments are stored
+## How review data is stored
 
-One comment store per repo, under `~/.local/share/nvim/review/` (Neovim's data dir). Comments survive restarts, so you can leave a review half done and pick it up later.
+One review store per repo, under `~/.local/share/nvim/review/` (Neovim's data dir). Comments and reviewed-file marks survive restarts, so you can leave a review half done and pick it up later. Existing comment-only stores are migrated automatically.
 
-`q` (or `:Review close`) ends a round: it exports, moves the store to `archive/` with a timestamp, and leaves you with an empty one. `C` and `:Review export` only export, so you can check the output midway. `:Review clear` archives too. Archives stick around for 30 days.
+`q` (or `:Review close`) ends a round: after a successful export it moves the whole store to `archive/` with a timestamp and leaves comments and checklist state empty. `C` and `:Review export` only export, so checklist state remains intact. `:Review clear` archives and clears both kinds of data. Archives stick around for 30 days.
 
 Since the store is per repo and not per branch, comments you left on another branch are still there when you open a review somewhere else. review.nvim tells you when that happens ("Comments made on other branches: 2 from feature-x"), and `:Review clear` drops them.
 
@@ -134,6 +139,7 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `i` | Add comment (pick type from menu) |
 | `d` | Delete comment at cursor |
 | `e` | Edit comment at cursor |
+| `r` | Toggle current file reviewed and advance (diff panes or explorer) |
 | `c` | List all comments |
 | `f` | Toggle file panel visibility |
 | `R` | Toggle readonly/edit mode |
@@ -143,8 +149,8 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `[n` | Jump to previous comment |
 | `C` | Export to clipboard and show preview |
 | `S` | Send comments to sidekick.nvim |
-| `<C-r>` | Archive and clear all comments |
-| `q` | Close: export, then archive and clear comments |
+| `<C-r>` | Archive and clear all review data |
+| `q` | Close: export, then archive and clear review data |
 | `t` | Toggle side-by-side/inline layout |
 | `g?` | Show codediff help |
 
@@ -155,6 +161,7 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `<localleader>cn/cs/ci/cp` | Add Note/Suggestion/Issue/Praise |
 | `<localleader>cd` | Delete comment |
 | `<localleader>ce` | Edit comment |
+| `<localleader>cr` | Toggle current file reviewed and advance (diff panes or explorer) |
 
 **Comment popup** (when adding/editing):
 | Key | Action |
@@ -178,6 +185,7 @@ All keymaps can be set to `false` to disable them.
 | `add_praise` | `<localleader>cp` | Add praise (edit mode) |
 | `delete_comment` | `<localleader>cd` | Delete comment (edit mode) |
 | `edit_comment` | `<localleader>ce` | Edit comment (edit mode) |
+| `toggle_file_reviewed` | `<localleader>cr` | Toggle file reviewed and advance (edit mode) |
 | `next_comment` | `]n` | Next comment |
 | `prev_comment` | `[n` | Previous comment |
 | `next_file` | `<Tab>` | Next file |
@@ -186,12 +194,13 @@ All keymaps can be set to `false` to disable them.
 | `list_comments` | `c` | List all comments |
 | `export_clipboard` | `C` | Export to clipboard |
 | `send_sidekick` | `S` | Send comments to sidekick |
-| `clear_comments` | `<C-r>` | Archive and clear all comments |
-| `close` | `q` | Close: export, archive and clear |
+| `clear_comments` | `<C-r>` | Archive and clear all review data |
+| `close` | `q` | Close: export, archive and clear review data |
 | `toggle_readonly` | `R` | Toggle readonly/edit mode |
 | `readonly_add` | `i` | Add comment (readonly mode) |
 | `readonly_delete` | `d` | Delete comment (readonly mode) |
 | `readonly_edit` | `e` | Edit comment (readonly mode) |
+| `readonly_toggle_file_reviewed` | `r` | Toggle file reviewed and advance (readonly mode) |
 | `popup_submit` | `<C-s>` | Submit comment (popup, insert & normal) |
 | `popup_cancel` | `q` | Cancel comment (popup, normal mode) |
 | `popup_cycle_type` | `<Tab>` | Cycle comment type (popup) |
@@ -204,6 +213,8 @@ All keymaps can be set to `false` to disable them.
 | `export.clipboard` | `true` | Copy exported markdown to the `+` and `*` registers |
 | `export.on_export` | `nil` | `function(markdown, comments)` run on every export |
 | `export.clear_on_close` | `true` | `q` archives and clears comments after exporting |
+| `reviewed.icon` | `✓` | Indicator shown for reviewed explorer entries |
+| `reviewed.hl` | `ReviewReviewed` | Highlight for the reviewed indicator |
 
 ```lua
 require("review").setup({
@@ -220,6 +231,7 @@ require("review").setup({
     add_praise = "<localleader>cp",
     delete_comment = "<localleader>cd",
     edit_comment = "<localleader>ce",
+    toggle_file_reviewed = "<localleader>cr",
     next_comment = "]n",
     prev_comment = "[n",
     toggle_file_panel = "f",
@@ -234,6 +246,10 @@ require("review").setup({
     clipboard = true,
     on_export = nil,
     clear_on_close = true,
+  },
+  reviewed = {
+    icon = "✓",
+    hl = "ReviewReviewed",
   },
 })
 ```
