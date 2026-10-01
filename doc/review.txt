@@ -148,7 +148,8 @@ codediff.readonly ~
 5. KEYMAPS                                                   *review-keymaps*
 
 All keymaps can be customized via `opts.keymaps`. Set a key to `false` to
-disable it. Keymaps are buffer-local to the review diff buffers.
+disable it. Keymaps are buffer-local to the review diff buffers, except for
+the reviewed-file toggle, which is also active in the CodeDiff explorer.
 
 READONLY MODE (default)                              *review-keymaps-readonly*
 
