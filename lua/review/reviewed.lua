@@ -343,7 +343,8 @@ function M.uncheck_current()
   end)
 end
 
-function M.toggle_current()
+---@param on_complete? fun()
+function M.toggle_current(on_complete)
   local target = M.resolve_target()
   if not target then
     no_session()
@@ -360,6 +361,9 @@ function M.toggle_current()
     redraw(explorer)
     local checked, total = progress(target)
     notify(string.format("%s %s (%d/%d)", reviewed and "Unreviewed" or "Reviewed", target.file, checked, total))
+    if on_complete then
+      on_complete()
+    end
   end)
 end
 

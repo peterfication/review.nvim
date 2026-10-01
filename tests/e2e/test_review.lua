@@ -223,19 +223,18 @@ T["marks files reviewed without moving focus"] = function()
 
   child.type_keys("r")
   wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed")
+  wait_ready("utils.lua")
   eq(child.api.nvim_get_current_win(), win)
   local explorer = child.lua_get(E.EXPLORER_TEXT)
   expect_match(explorer, "✓")
   expect_match(explorer, "api%.lua")
-  expect.reference_screenshot(screenshot(), nil, SCREENSHOT_OPTS)
 
-  child.type_keys("<Tab>")
-  wait_ready("utils.lua")
-  expect_match(child.lua_get(E.EXPLORER_TEXT), "✓")
   child.type_keys("<S-Tab>")
   wait_ready("api.lua")
+  expect.reference_screenshot(screenshot(), nil, SCREENSHOT_OPTS)
   child.type_keys("r")
   wait_for([[require("review.store").count_reviewed() == 0]], "file marked unreviewed")
+  wait_ready("utils.lua")
   eq(child.lua_get(E.EXPLORER_TEXT):find("✓", 1, true), nil)
 end
 
@@ -246,9 +245,16 @@ T["marks files reviewed from the explorer"] = function()
   end)()]])
   child.api.nvim_set_current_win(explorer_win)
 
-  eq(child.lua_get([[vim.fn.maparg("r", "n", false, true).desc]]), "Toggle file reviewed")
+  eq(
+    child.lua_get([[vim.fn.maparg("r", "n", false, true).desc]]),
+    "Toggle file reviewed and go to next file"
+  )
   child.type_keys("r")
   wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed from explorer")
+  wait_for(
+    [[require("review.hooks").get_explorer(vim.api.nvim_get_current_tabpage()).data.current_selection.path == "utils.lua"]],
+    "advanced from explorer"
+  )
   eq(child.api.nvim_get_current_win(), explorer_win)
   expect_match(child.lua_get(E.EXPLORER_TEXT), "✓")
 end
@@ -275,6 +281,8 @@ T["invalidates a mark when the selected diff changes"] = function()
   open_review()
   child.type_keys("r")
   wait_for([[require("review.store").count_reviewed() == 1]], "file marked reviewed")
+  child.type_keys("<S-Tab>")
+  wait_ready("api.lua")
   child.lua(string.format(
     [[
     local path = %q
@@ -300,7 +308,6 @@ T["treats staged and unstaged copies as separate entries"] = function()
   eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "unstaged")]]), true)
   eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "staged")]]), false)
 
-  child.type_keys("<Tab>")
   wait_ready("utils.lua")
   child.type_keys("<Tab>")
   wait_ready("api.lua")
@@ -308,6 +315,21 @@ T["treats staged and unstaged copies as separate entries"] = function()
   child.type_keys("r")
   wait_for([[require("review.store").count_reviewed() == 2]], "staged entry marked independently")
 
+  wait_for([[(function()
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local selected = require("review.hooks").get_explorer(tabpage).data.current_selection or {}
+    local session = require("codediff.ui.lifecycle").get_session(tabpage)
+    return selected.group == "unstaged" and session.refresh and not session.refresh.loading
+  end)()]], "wrapped to unstaged api")
+  wait_for(READY, "review keymaps on wrapped unstaged api")
+  child.type_keys("<S-Tab>")
+  wait_for([[(function()
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local selected = require("review.hooks").get_explorer(tabpage).data.current_selection or {}
+    local session = require("codediff.ui.lifecycle").get_session(tabpage)
+    return selected.group == "staged" and session.refresh and not session.refresh.loading
+  end)()]], "returned to staged api")
+  wait_for(READY, "review keymaps on staged api")
   child.type_keys("r")
   wait_for([[require("review.store").count_reviewed() == 1]], "staged entry unmarked")
   eq(child.lua_get([[require("review.store").is_reviewed("api.lua", "unstaged")]]), true)

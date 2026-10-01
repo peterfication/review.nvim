@@ -160,7 +160,7 @@ These keymaps are active when `codediff.readonly = true`:
     `e`       Edit comment at cursor                  |n|
     `d`       Delete comment at cursor                |n|
     `F`       Add file-level comment                  |n|
-    `r`       Toggle selected file reviewed           |n|
+    `r`       Toggle selected file reviewed and advance |n|
 
 EDIT MODE                                               *review-keymaps-edit*
 
@@ -175,7 +175,7 @@ These keymaps are active when `codediff.readonly = false`:
     `<localleader>cf`    Add file-level comment              |n|
     `<localleader>ce`    Edit comment at cursor              |n|
     `<localleader>cd`    Delete comment at cursor            |n|
-    `<localleader>cr`    Toggle selected file reviewed       |n|
+    `<localleader>cr`    Toggle selected file reviewed and advance |n|
 
 NAVIGATION                                               *review-keymaps-nav*
 
