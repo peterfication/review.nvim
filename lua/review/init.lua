@@ -372,8 +372,9 @@ function M.uncheck_current()
   reviewed.uncheck_current()
 end
 
-function M.toggle_current_reviewed()
-  reviewed.toggle_current()
+---@param on_complete? fun()
+function M.toggle_current_reviewed(on_complete)
+  reviewed.toggle_current(on_complete)
 end
 
 function M.count()

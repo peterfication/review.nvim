@@ -98,7 +98,7 @@ For a multi-line comment, select the range visually and press `i`. For a comment
 
 `]n` and `[n` jump between comments, `e` edits one, `d` deletes. `c` lists every comment across files so you can jump to one.
 
-Press `r` to mark the selected file reviewed. A `✓` appears in the CodeDiff explorer, and pressing `r` again removes it. The staged and unstaged versions of the same path are separate checklist entries. Marks are local review metadata only: they do not stage files and do not synchronize GitHub's Viewed state. A mark fingerprints both sides of the comparison and is removed when either side changes.
+Press `r` to toggle the selected file reviewed and advance to the next file. A `✓` appears in the CodeDiff explorer. The staged and unstaged versions of the same path are separate checklist entries. Marks are local review metadata only: they do not stage files and do not synchronize GitHub's Viewed state. A mark fingerprints both sides of the comparison and is removed when either side changes.
 
 `C` copies the comments to the clipboard as markdown and shows a preview. `q` does the export one more time, archives the comments and closes, so the next review starts empty. Paste the markdown into Claude Code, sidekick.nvim (`S`), or whatever you're talking to. It looks like this:
 
@@ -139,7 +139,7 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `i` | Add comment (pick type from menu) |
 | `d` | Delete comment at cursor |
 | `e` | Edit comment at cursor |
-| `r` | Toggle current file reviewed (diff panes or explorer) |
+| `r` | Toggle current file reviewed and advance (diff panes or explorer) |
 | `c` | List all comments |
 | `f` | Toggle file panel visibility |
 | `R` | Toggle readonly/edit mode |
@@ -161,7 +161,7 @@ Since the store is per repo and not per branch, comments you left on another bra
 | `<localleader>cn/cs/ci/cp` | Add Note/Suggestion/Issue/Praise |
 | `<localleader>cd` | Delete comment |
 | `<localleader>ce` | Edit comment |
-| `<localleader>cr` | Toggle current file reviewed (diff panes or explorer) |
+| `<localleader>cr` | Toggle current file reviewed and advance (diff panes or explorer) |
 
 **Comment popup** (when adding/editing):
 | Key | Action |
@@ -185,7 +185,7 @@ All keymaps can be set to `false` to disable them.
 | `add_praise` | `<localleader>cp` | Add praise (edit mode) |
 | `delete_comment` | `<localleader>cd` | Delete comment (edit mode) |
 | `edit_comment` | `<localleader>ce` | Edit comment (edit mode) |
-| `toggle_file_reviewed` | `<localleader>cr` | Toggle file reviewed (edit mode) |
+| `toggle_file_reviewed` | `<localleader>cr` | Toggle file reviewed and advance (edit mode) |
 | `next_comment` | `]n` | Next comment |
 | `prev_comment` | `[n` | Previous comment |
 | `next_file` | `<Tab>` | Next file |
@@ -200,7 +200,7 @@ All keymaps can be set to `false` to disable them.
 | `readonly_add` | `i` | Add comment (readonly mode) |
 | `readonly_delete` | `d` | Delete comment (readonly mode) |
 | `readonly_edit` | `e` | Edit comment (readonly mode) |
-| `readonly_toggle_file_reviewed` | `r` | Toggle file reviewed (readonly mode) |
+| `readonly_toggle_file_reviewed` | `r` | Toggle file reviewed and advance (readonly mode) |
 | `popup_submit` | `<C-s>` | Submit comment (popup, insert & normal) |
 | `popup_cancel` | `q` | Cancel comment (popup, normal mode) |
 | `popup_cycle_type` | `<Tab>` | Cycle comment type (popup) |
