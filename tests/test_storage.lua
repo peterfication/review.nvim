@@ -55,12 +55,62 @@ T["load"] = MiniTest.new_set()
 T["load"]["adopts the old per-branch file on first run"] = function()
   vim.fn.writefile({ '{"b.lua":[{"file":"b.lua","line":2,"type":"issue","text":"from before"}]}' }, storage.legacy_storage_path())
   local data = storage.load()
-  eq(data["b.lua"][1].text, "from before")
+  eq(data.version, 2)
+  eq(data.comments["b.lua"][1].text, "from before")
+  eq(data.reviewed_files, {})
   eq(vim.fn.filereadable(storage.get_storage_path()), 1)
 end
 
 T["load"]["returns an empty table when nothing is stored"] = function()
-  eq(storage.load(), {})
+  eq(storage.load(), { version = 2, comments = {}, reviewed_files = {} })
+end
+
+T["load"]["migrates a version 1 comment map in memory"] = function()
+  vim.fn.writefile({ '{"old.lua":[{"file":"old.lua","line":4,"type":"note","text":"keep"}]}' }, storage.get_storage_path())
+  local data = storage.load()
+  eq(data.version, 2)
+  eq(data.comments["old.lua"][1].text, "keep")
+  eq(data.reviewed_files, {})
+  eq(table.concat(vim.fn.readfile(storage.get_storage_path()), "\n"):find('"version"', 1, true), nil)
+end
+
+T["load"]["round trips version 2 review data"] = function()
+  storage.save({
+    version = 2,
+    comments = { ["a.lua"] = { { file = "a.lua", line = 1, type = "note", text = "text" } } },
+    reviewed_files = {
+      ["unstaged\0a.lua"] = {
+        file = "a.lua",
+        group = "unstaged",
+        original_hash = "old",
+        modified_hash = "new",
+        reviewed_at = 123,
+      },
+    },
+  })
+  local data = storage.load()
+  eq(data.comments["a.lua"][1].text, "text")
+  eq(data.reviewed_files["unstaged\0a.lua"].reviewed_at, 123)
+end
+
+T["load"]["drops malformed reviewed entries"] = function()
+  storage.save({
+    version = 2,
+    comments = {},
+    reviewed_files = {
+      bad = { file = "bad.lua", group = "unstaged", original_hash = "old" },
+      good = {
+        file = "./good.lua",
+        group = "staged",
+        original_hash = "old",
+        modified_hash = "new",
+        reviewed_at = 1,
+      },
+    },
+  })
+  local data = storage.load()
+  eq(vim.tbl_count(data.reviewed_files), 1)
+  eq(data.reviewed_files["staged\0good.lua"].file, "good.lua")
 end
 
 T["cleanup_expired"] = MiniTest.new_set()
@@ -78,6 +128,26 @@ T["cleanup_expired"]["drops old archives and never the live file"] = function()
   eq(vim.fn.filereadable(old), 0)
   eq(vim.fn.filereadable(fresh), 1)
   eq(vim.fn.filereadable(live), 1)
+end
+
+T["archive"]["keeps comments and reviewed files together"] = function()
+  storage.save({
+    version = 2,
+    comments = { ["a.lua"] = { { text = "comment text" } } },
+    reviewed_files = {
+      one = {
+        file = "a.lua",
+        group = "unstaged",
+        original_hash = "before-hash",
+        modified_hash = "after-hash",
+        reviewed_at = 1,
+      },
+    },
+  })
+  local archived = storage.archive()
+  local contents = table.concat(vim.fn.readfile(archived), "\n")
+  expect_match(contents, "comment text", true)
+  expect_match(contents, "before%-hash")
 end
 
 return T
